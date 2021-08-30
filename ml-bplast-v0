@@ -1,0 +1,115 @@
+
+# # Neural network
+
+# Import python packages
+
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+get_ipython().run_line_magic('matplotlib', 'inline')
+
+
+# Import data 
+
+df = pd.read_csv('mldata_0302912102.csv')
+pd.set_option('display.max_columns', None)
+
+C_vals =df.iloc[:,2:].values
+xy_vals = df.iloc[:,1:2].values
+
+
+# Split data into train and test (80/20)
+
+train_indices = np.random.choice(len(C_vals), int(len(C_vals)*0.8), replace=False)
+test_indices = np.array(list(set(range(len(C_vals))) - set(train_indices)))
+
+C_train, C_test = C_vals[train_indices], C_vals[test_indices]
+xy_train, xy_test = xy_vals[train_indices], xy_vals[test_indices]
+
+
+# Min max normalization by column
+
+def min_max(df):
+    return (df-df.min()) / (df.max()-df.min())
+    
+C_train = np.nan_to_num(min_max(C_train))
+C_test = np.nan_to_num(min_max(C_test))
+
+# We don't assign values right away, that's why we initialize placeholders (this is something tipical of tensorflow)
+tf.compat.v1.disable_eager_execution()
+
+
+C_data = tf.compat.v1.placeholder(shape=[None,30], dtype=tf.float32)
+xy_target = tf.compat.v1.placeholder(shape=[None,1], dtype=tf.float32)
+
+
+# We now randomly initialize weights for NN layers, this is a one layer model for now
+
+hidden_layer_nodes = 10 #let's try with 50
+#define and initialize weights for each layer
+w1 = tf.Variable(tf.compat.v1.truncated_normal(shape=[30,hidden_layer_nodes], stddev=.1))
+w2 = tf.Variable(tf.compat.v1.truncated_normal(shape=[hidden_layer_nodes,1], stddev=.1))  # hidden nodes to 2 dimensional output
+
+#define biases for each layer
+b1 = tf.Variable(tf.compat.v1.truncated_normal(shape=[hidden_layer_nodes], stddev=.1))    # add bias to each hidden node
+b2 = tf.Variable(tf.compat.v1.truncated_normal(shape=[1], stddev=.1))                     # add bias to the output
+
+
+#define activation function for each layer
+h1 = tf.nn.swish(tf.matmul(C_data, w1)+ b1)
+output = tf.nn.swish(tf.matmul(h1, w2)+ b2) #same size as xy_target
+
+
+# We choose SSE as cost function:
+
+mse = tf.reduce_mean(tf.square(xy_target - tf.squeeze(output)))
+
+
+optimizer = tf.compat.v1.train.GradientDescentOptimizer(0.001)
+train = optimizer.minimize(mse)
+
+
+# We initialize variables and start session
+
+session= tf.compat.v1.InteractiveSession()
+
+init = tf.compat.v1.global_variables_initializer()
+session.run(init)
+
+
+# This is our training loop, we get the loss for each epoc
+
+vector1 = []
+vector2 = []
+for epoch in range(500):
+    rand_index = np.random.choice(len(C_train), size = 500)
+    rand_index_test = np.random.choice(len(C_test), size = 200)
+    C_rand = C_train[rand_index]
+    xy_rand = (xy_train[rand_index])
+    session.run(train, feed_dict={C_data: C_rand, xy_target: xy_rand})
+
+    mse_over_epochs = session.run(mse, feed_dict={C_data: C_rand, xy_target: xy_rand})
+    vector1.append(np.sqrt(mse_over_epochs))
+    
+    C_test = C_test[rand_index_test]
+    xy_test = (xy_test[rand_index_test])
+    test_over_epochs = session.run(mse, feed_dict={C_data: C_test, xy_target: xy_test})
+    vector2.append(np.sqrt(test_over_epochs))
+    if ((epoch+1)%20)==0:
+        print('Epoch number: %g,  Training MSE: %g '% (epoch+1,mse_over_epochs))
+
+
+# Plot loss per epoch
+# 
+
+plt.figure(figsize=(10,5))
+plt.plot(vector1, label='train loss')
+plt.plot(vector2,label='test loss')
+plt.xlabel('epoch')
+plt.ylabel('loss')
+plt.legend(prop = {'size': 12})
+plt.show()
+
